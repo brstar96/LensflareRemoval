@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# log files
+log/
+*.log
+Tensorboard/
+
+# train weights
+experiment/
+*.pkl
+*.ckpt

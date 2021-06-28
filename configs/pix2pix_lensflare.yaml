@@ -1,0 +1,48 @@
+# general settings
+modelname: pix2pix_v1
+gpu_ids: 0
+
+# datasets
+datasets:
+  train:
+    train_input_img: /home/datasets/LensflareRemovalDataset/train_input_img/
+    train_label_img: /home/datasets/LensflareRemovalDataset/train_label_img/
+    train_csv: /home/datasets/LensflareRemovalDataset/train_splited.csv
+    batch_size: 64
+    patch_size: 128
+    direction: b2a
+    mean: [0.206, 0.218, 0.196]
+    std: [0.232, 0.239, 0.231]
+    split: train
+  val:
+    val_path: /home/datasets/LensflareRemovalDataset/
+    val_csv: /home/datasets/LensflareRemovalDataset/val_splited.csv
+    mean: [0.206, 0.218, 0.196]
+    std: [0.232, 0.239, 0.231]
+    batch_size: 64
+  test:
+    test_path: /home/datasets/LensflareRemovalDataset/test_input_img
+    test_csv: /home/datasets/LensflareRemovalDataset/test.csv
+    mean: [0.214, 0.225, 0.204]
+    std: [0.208, 0.216, 0.210]
+    batch_size: 64
+
+# network settings
+networks:
+  which_model: pix2pix_v1
+  patch_size: 64
+
+# path to save trained model
+paths:
+  experiment_root: ./experiment
+  result_path: ./experiment/image_results
+
+# optimizer
+trainer:
+  lr: !!float 1e-2
+  loss: mae
+  epochs: 300
+  workers: 0
+  val_step: 1
+  resume: False
+  resume_path: ~
