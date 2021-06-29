@@ -1,8 +1,10 @@
 import os, cv2, pickle, random
 from os import listdir
 import os.path as osp
+from matplotlib.pyplot import pie
 import numpy as np
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 class LensflareDataset(Dataset):
     def __init__(self, opt_datasets, transform=False):
@@ -10,53 +12,52 @@ class LensflareDataset(Dataset):
         self.opt = opt_datasets
         self.batch_size = opt_datasets['batch_size']
         self.patch_size = opt_datasets['patch_size']
+        self.stride = opt_datasets['stride']
         self.split = opt_datasets['split']
+        self.flip = opt_datasets['flip']
+        self.rot = opt_datasets['rot']
         self.transform = transform
         self.direction = opt_datasets['direction']
         self.path2a = opt_datasets['train_input_img']
         self.path2b = opt_datasets['train_label_img']
         self.convert_img_to_pt(key='train_input_img')
         self.convert_img_to_pt(key='train_label_img')
-        self.img_list_path2a = os.listdir(self.path2a)
-        self.img_list_path2b = os.listdir(self.path2b)
+        self.img_list_path2a = os.listdir(self.opt['train_input_img'])
+        self.img_list_path2b = os.listdir(self.opt['train_label_img'])
         
         if len(self.img_list_path2a) != len(self.img_list_path2b):
             print('Dataset length is not equal!')
             raise NotImplementedError
     
     def convert_img_to_pt(self, key):
-        if self.opt[key][-1] == '/':
-            self.opt[key] = self.opt[key][:-1]
-
-        img_list = os.listdir(self.opt[key])
-        need_convert = False
-
-        for i in range(len(img_list)):
-            _, ext = osp.splitext(img_list[i])
-            if ext != '.pt':
-                need_convert = True
-                break
-        if need_convert == False:
-            self.image_list = img_list
-            return
+        pt_path = self.opt[key].replace(key, key+'_pt')
         
-        new_dir_path = self.opt[key] + '_pt'
-        if osp.exists(new_dir_path) and len(os.listdir(new_dir_path))==len(img_list):
-            self.opt[key] = new_dir_path
+        if osp.exists(pt_path) and len(os.listdir(pt_path)) != 0:
+            self.opt[key] = pt_path
             return
+        else:
+            os.makedirs(pt_path, exist_ok=True)
+            img_list = os.listdir(self.opt[key])
 
-        os.makedirs(new_dir_path, exist_ok=True)
-
-        for i in range(len(img_list)):
-            base, ext = osp.splitext(img_list[i])
-            src_path = osp.join(self.opt[key], img_list[i])
-            dst_path = osp.join(new_dir_path, base+'.pt')             
-
-            with open(dst_path, 'wb') as _f:
+            for i in tqdm(range(len(img_list)), desc='Convert image into *.pt files({})...'.format(key)):
+                base, ext = osp.splitext(img_list[i])
+                src_path = osp.join(self.opt[key], img_list[i])
                 img = cv2.imread(src_path)
-                pickle.dump(img, _f)
+                num = 0
 
-        self.opt[key] = new_dir_path
+                for top in range(0, img.shape[0], self.stride):
+                    for left in range(0, img.shape[1], self.stride):
+                        piece = np.zeros([self.patch_size, self.patch_size, 3], np.uint8)
+                        temp = img[top:top+self.patch_size, left:left+self.patch_size, :]
+                        piece[:temp.shape[0], :temp.shape[1], :] = temp
+                        dst_path = osp.join(pt_path, base+'.pt')             
+                        dst_path = f'{pt_path}{base}_{self.patch_size}_{num}.pt'
+
+                        with open(dst_path, 'wb') as _f:
+                            pickle.dump(piece, _f)
+                            num+=1
+
+        self.opt[key] = pt_path
 
     def read_img(self, img_path):
         with open(img_path, 'rb') as f:
@@ -73,48 +74,39 @@ class LensflareDataset(Dataset):
         a = self.read_img(path2a_path) # uint8
         b = self.read_img(path2b_path) # uint8
 
-        if self.split == 'train':
-            a_patch, b_patch = self.get_patch(a, b, self.patch_size)
-            
-            if self.transform:
-                a = self.transform(a_patch)
-                b = self.transform(b_patch)
+        if self.split == 'train': # get patch batch 
+            a, b = self.augment(imageA=a, imageB=b, flip=self.flip, rot=self.rot)
 
         if self.direction == 'b2a':
             return b, a
         else:
             return a, b
 
-    def get_patch(self, a, b, ps, scale):
-        # TODO(6/29): 이미지 전체를 packing해 모든 이미지 패치 추출
-        a_h, a_w, a_c = a.shape
-        b_h, b_w, b_c = b.shape
-        
-        a_x = random.randint(0, a_w - ps)
-        a_y = random.randint(0, a_h - ps)
-        b_x = a_x * scale
-        b_y = a_y * scale
-        
-        a_patch = a[a_y:a_y+ps, a_x:a_x+ps, :]
-        b_patch = b[b_y:b_y+ps*scale, b_x:b_x+ps*scale, :]
+    def augment(self, imageA, imageB, flip, rot):
+        hflip = flip and random.random() < 0.5
+        vflip = flip and random.random() < 0.5
+        rot90 = rot and random.random() < 0.5
 
-        return a_patch, b_patch
+        if hflip:
+            imageA = np.ascontiguousarray(imageA[:, ::-1, :])
+            imageB = np.ascontiguousarray(imageB[:, ::-1, :])
+        if vflip:
+            imageA = np.ascontiguousarray(imageA[::-1, :, :])
+            imageB = np.ascontiguousarray(imageB[::-1, :, :])
+        if rot90:
+            imageA = imageA.transpose(1, 0, 2)
+            imageB = imageB.transpose(1, 0, 2)
+    
+        return imageA, imageB
 
     def __getitem__(self, idx):
-        start = (idx*self.batch_size) 
-        end = start + self.batch_size
-
         if self.split == 'train':
-            path2a_batch = np.zeros((self.batch_size, self.patch_size, self.patch_size, 3), dtype=np.float32)
-            path2b_batch = np.zeros((self.batch_size, self.patch_size, self.patch_size, 3), dtype=np.float32)
-            
-            for i in range(start, end):
-                path2a, path2b = self.get_image_pair(i%len(self.img_list_path2a))
+            a, b = self.get_image_pair(idx)
         else:
-            path2a, path2b = self.get_image_pair(idx)
-            path2a_batch, path2b_batch = np.expand_dims(path2a, 0), np.expand_dims(path2b, 0)
+            a, b = self.get_image_pair(idx)
+            a, b = np.expand_dims(a, 0), np.expand_dims(b, 0)
 
-        return (path2a_batch).astype(np.float32), (path2b_batch).astype(np.float32)
+        return (a).astype(np.float32), (b).astype(np.float32)
         
     def __len__(self):
         return len([x for x in listdir(self.path2a)])

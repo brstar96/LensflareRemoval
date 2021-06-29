@@ -7,13 +7,18 @@ datasets:
   train:
     train_input_img: /home/datasets/LensflareRemovalDataset/train_input_img/
     train_label_img: /home/datasets/LensflareRemovalDataset/train_label_img/
+    train_input_pt: /home/datasets/LensflareRemovalDataset/train_input_img_pt/
+    train_label_pt: /home/datasets/LensflareRemovalDataset/train_label_img_pt/
     train_csv: /home/datasets/LensflareRemovalDataset/train_splited.csv
     batch_size: 64
-    patch_size: 128
-    direction: b2a
+    patch_size: 256
+    stride: 128
+    direction: a2b # input:a, label:b
     mean: [0.206, 0.218, 0.196]
     std: [0.232, 0.239, 0.231]
     split: train
+    flip: true
+    rot: true
   val:
     val_path: /home/datasets/LensflareRemovalDataset/
     val_csv: /home/datasets/LensflareRemovalDataset/val_splited.csv

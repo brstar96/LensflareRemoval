@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import os, time, random, torch, argparse
+import torch, argparse, time
 from os import listdir
 from os.path import join
 from PIL import Image
@@ -37,11 +37,7 @@ if __name__ == '__main__':
     lg.info('Training: [{}] iterations for each epoch'.format(len(train_data)))
 
     # 샘플 이미지 확인
-    a,b = train_data[0]
-    plt.figure(figsize=(10,10))
-    plt.subplot(1,2,1)
-    plt.imshow(to_pil_image(0.5*a+0.5))
-    plt.axis('off')
-    plt.subplot(1,2,2)
-    plt.imshow(to_pil_image(0.5*b+0.5))
-    plt.axis('off')
+    for i in range(1000):
+        a,b = train_data[i]
+        print(a.shape)
+        time.sleep(1.5)
