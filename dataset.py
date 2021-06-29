@@ -102,11 +102,19 @@ class LensflareDataset(Dataset):
     def __getitem__(self, idx):
         if self.split == 'train':
             a, b = self.get_image_pair(idx)
+            
+            if self.transform:
+                a = self.transform(a)
+                b = self.transform(b)
         else:
             a, b = self.get_image_pair(idx)
             a, b = np.expand_dims(a, 0), np.expand_dims(b, 0)
+            
+            if self.transform:
+                a = self.transform(a)
+                b = self.transform(b)
 
-        return (a).astype(np.float32), (b).astype(np.float32)
+        return a, b
         
     def __len__(self):
         return len([x for x in listdir(self.path2a)])

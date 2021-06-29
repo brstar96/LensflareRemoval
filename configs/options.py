@@ -34,8 +34,8 @@ def parse(opt):
             lg.info('Create directory: {}'.format(path)) 
 
     # GPU environment
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args['gpu_ids'])
-    lg.info('Available gpu: {}'.format(args['gpu_ids']))
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args['networks']['gpu_ids'])
+    lg.info('Available gpu: {}'.format(args['networks']['gpu_ids']))
     
     return dict_to_nonedict(args), lg
 
