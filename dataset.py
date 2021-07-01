@@ -1,29 +1,27 @@
-import os, cv2, pickle, random
-from os import listdir
+import os, cv2, pickle, random, time
 import os.path as osp
-from matplotlib.pyplot import pie
 import numpy as np
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
 class LensflareDataset(Dataset):
-    def __init__(self, opt_datasets, transform=False):
+    def __init__(self, opt_datasets, key, transform=False):
         super().__init__()
+        self.key = key
         self.opt = opt_datasets
         self.batch_size = opt_datasets['batch_size']
         self.patch_size = opt_datasets['patch_size']
         self.stride = opt_datasets['stride']
-        self.split = opt_datasets['split']
         self.flip = opt_datasets['flip']
         self.rot = opt_datasets['rot']
         self.transform = transform
-        self.direction = opt_datasets['direction']
-        self.path2a = opt_datasets['train_input_img']
-        self.path2b = opt_datasets['train_label_img']
-        self.convert_img_to_pt(key='train_input_img')
-        self.convert_img_to_pt(key='train_label_img')
-        self.img_list_path2a = os.listdir(self.opt['train_input_img'])
-        self.img_list_path2b = os.listdir(self.opt['train_label_img'])
+        self.split = opt_datasets['split']
+        self.path2a = opt_datasets[self.key[0]]
+        self.path2b = opt_datasets[self.key[-1]]
+        self.convert_img_to_pt(key=self.key[0])
+        self.convert_img_to_pt(key=self.key[-1])
+        self.img_list_path2a = os.listdir(self.opt[self.key[0]])
+        self.img_list_path2b = os.listdir(self.opt[self.key[-1]])
         
         if len(self.img_list_path2a) != len(self.img_list_path2b):
             print('Dataset length is not equal!')
@@ -45,16 +43,22 @@ class LensflareDataset(Dataset):
                 img = cv2.imread(src_path)
                 num = 0
 
-                for top in range(0, img.shape[0], self.stride):
-                    for left in range(0, img.shape[1], self.stride):
-                        piece = np.zeros([self.patch_size, self.patch_size, 3], np.uint8)
-                        temp = img[top:top+self.patch_size, left:left+self.patch_size, :]
-                        piece[:temp.shape[0], :temp.shape[1], :] = temp
-                        dst_path = osp.join(pt_path, base+'.pt')             
-                        dst_path = f'{pt_path}{base}_{self.patch_size}_{num}.pt'
+                if self.split == 'train':
+                    for top in range(0, img.shape[0], self.stride):
+                        for left in range(0, img.shape[1], self.stride):
+                            piece = np.zeros([self.patch_size, self.patch_size, 3], np.uint8)
+                            temp = img[top:top+self.patch_size, left:left+self.patch_size, :]
+                            piece[:temp.shape[0], :temp.shape[1], :] = temp
+                            dst_path = osp.join(pt_path, base+'.pt')             
+                            dst_path = f'{pt_path}{base}_{self.patch_size}_{num}.pt'
 
-                        with open(dst_path, 'wb') as _f:
-                            pickle.dump(piece, _f)
+                            with open(dst_path, 'wb') as _f:
+                                pickle.dump(piece, _f)
+                                num+=1
+                else:
+                    dst_path = osp.join(pt_path, base+'.pt')
+                    with open(dst_path, 'wb') as _f:
+                            pickle.dump(img, _f)
                             num+=1
 
         self.opt[key] = pt_path
@@ -66,21 +70,18 @@ class LensflareDataset(Dataset):
 
         return img
 
-    def get_image_pair(self, idx):
-        path2a_path = osp.join(self.opt['train_input_img'], self.img_list_path2a[idx]).replace('png', 'pt')
-        path2b_path = osp.join(self.opt['train_label_img'], self.img_list_path2b[idx]).replace('png', 'pt')
+    def get_image_pair(self, idx, key):
+        path2a_path = osp.join(self.opt[key[0]], self.img_list_path2a[idx]).replace('png', 'pt')
+        path2b_path = osp.join(self.opt[key[-1]], self.img_list_path2b[idx]).replace('png', 'pt')
 
         # load img
-        a = self.read_img(path2a_path) # uint8
-        b = self.read_img(path2b_path) # uint8
+        input = self.read_img(path2a_path) # uint8
+        label = self.read_img(path2b_path) # uint8
 
-        if self.split == 'train': # get patch batch 
-            a, b = self.augment(imageA=a, imageB=b, flip=self.flip, rot=self.rot)
+        if self.split == 'train':
+            input, label = self.augment(imageA=input, imageB=label, flip=self.flip, rot=self.rot)
 
-        if self.direction == 'b2a':
-            return b, a
-        else:
-            return a, b
+        return input, label
 
     def augment(self, imageA, imageB, flip, rot):
         hflip = flip and random.random() < 0.5
@@ -100,21 +101,13 @@ class LensflareDataset(Dataset):
         return imageA, imageB
 
     def __getitem__(self, idx):
-        if self.split == 'train':
-            a, b = self.get_image_pair(idx)
-            
-            if self.transform:
-                a = self.transform(a)
-                b = self.transform(b)
-        else:
-            a, b = self.get_image_pair(idx)
-            a, b = np.expand_dims(a, 0), np.expand_dims(b, 0)
-            
-            if self.transform:
-                a = self.transform(a)
-                b = self.transform(b)
-
-        return a, b
+        input, label = self.get_image_pair(idx, self.key)
+        
+        if self.transform:
+            input = self.transform(input)
+            label = self.transform(label)
+        
+        return input, label
         
     def __len__(self):
-        return len([x for x in listdir(self.path2a)])
+        return len(self.img_list_path2a)
