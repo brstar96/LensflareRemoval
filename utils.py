@@ -1,4 +1,4 @@
-import torch, logging, math, os, sys, time, random
+import torch, logging, math, os, sys, time, random, itertools
 import os.path as osp
 import numpy as np
 from shutil import get_terminal_size
@@ -154,3 +154,34 @@ def to_np(t):
 def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
+
+def grouper(n, iterable):
+	""" Browse an iterator by chunk of n elements """
+	it = iter(iterable)
+	while True:
+		chunk = tuple(itertools.islice(it, n))
+		if not chunk:
+			return
+		yield chunk
+
+def sliding_window(top, step=10, window_size=(20,20)):
+	""" Slide a window_shape window across the image with a stride of step """
+	for x in range(0, top.shape[0], step):
+		if x + window_size[0] > top.shape[0]:
+			x = top.shape[0] - window_size[0]
+		for y in range(0, top.shape[1], step):
+			if y + window_size[1] > top.shape[1]:
+				y = top.shape[1] - window_size[1]
+			yield x, y, window_size[0], window_size[1]
+
+def count_sliding_window(top, step=10, window_size=(20,20)):
+	""" Count the number of windows in an image """
+	c = 0
+	for x in range(0, top.shape[0], step):
+		if x + window_size[0] > top.shape[0]:
+			x = top.shape[0] - window_size[0]
+		for y in range(0, top.shape[1], step):
+			if y + window_size[1] > top.shape[1]:
+				y = top.shape[1] - window_size[1]
+			c += 1
+	return c

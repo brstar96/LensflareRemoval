@@ -1,4 +1,4 @@
-import os, cv2, pickle, random, time
+import os, cv2, pickle, random
 import os.path as osp
 import numpy as np
 from torch.utils.data import Dataset
@@ -80,7 +80,7 @@ class LensflareDataset(Dataset):
 
         if self.split == 'train':
             input, label = self.augment(imageA=input, imageB=label, flip=self.flip, rot=self.rot)
-
+        
         return input, label
 
     def augment(self, imageA, imageB, flip, rot):
@@ -102,7 +102,7 @@ class LensflareDataset(Dataset):
 
     def __getitem__(self, idx):
         input, label = self.get_image_pair(idx, self.key)
-        
+
         if self.transform:
             input = self.transform(input)
             label = self.transform(label)

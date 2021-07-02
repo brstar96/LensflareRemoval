@@ -4,11 +4,13 @@ from torch.utils.data import DataLoader
 from torch import optim
 from skimage.metrics import peak_signal_noise_ratio
 import torchvision.transforms as transforms
+from torch.autograd import Variable
 from torchvision.transforms.functional import to_pil_image
 from configs import parse
 from dataset import LensflareDataset
 from models import create_model
-from utils import ProgressBar, AverageMeter, fix_seed_everything, to_np, get_lr
+from tqdm import tqdm
+from utils import ProgressBar, AverageMeter, fix_seed_everything, get_lr, sliding_window, count_sliding_window, grouper
 import numpy as np
 
 class Trainer(object):
@@ -32,7 +34,7 @@ class Trainer(object):
             lg.info('Create train dataset successfully!')
             lg.info('Training: [{}] iterations for each epoch'.format(len(train_data)))
 
-            val_data = LensflareDataset(opt_datasets=args['datasets']['val'], key=['val_input_img', 'val_label_img'], transform=transform)
+            val_data = LensflareDataset(opt_datasets=args['datasets']['val'], key=['val_input_img', 'val_label_img'], transform=None)
             val_dataloader = DataLoader(val_data, batch_size=args['datasets']['val']['batch_size'], shuffle=False)
             lg.info('Create validation dataset successfully!')
             lg.info('Validating: [{}] iterations for each epoch'.format(len(val_data)))
@@ -52,7 +54,7 @@ class Trainer(object):
                                                         betas=(args['trainer']['beta1'],
                                                         args['trainer']['beta2']))
 
-            self.train_model(device=device, model_G=model_gen, model_D=model_dis, train_loader=train_dataloader, val_loader = val_dataloader,
+            self.train_model(device=device, model_G=model_gen, model_D=model_dis, train_loader=train_dataloader, val_dataset = val_data,
                              adv_loss=loss_func_gan, l1_loss=loss_func_pix, opt_G=opt_gen, opt_D=opt_dis, lg=lg)
 
         elif args['mode'] == 'test':
@@ -62,7 +64,7 @@ class Trainer(object):
             print('Invalid mode')
             raise NotImplementedError
 
-    def train_model(self, device, model_G, model_D, train_loader, val_loader, adv_loss, l1_loss, opt_G, opt_D, lg):
+    def train_model(self, device, model_G, model_D, train_loader, val_dataset, adv_loss, l1_loss, opt_G, opt_D, lg):
         if args['vis_type'] == 'wandb':
             wandb.watch(model_G)
             wandb.watch(model_D)
@@ -134,7 +136,9 @@ class Trainer(object):
                         lg.info('Epoch/Step: {:4}/{:4} | G_Loss: {:.4f} | D_Loss: {:.4f} | opt_G_lr: {:.2e} | opt_D_lr: {:.2e}'.format(
                             epoch, idx, epoch_g_loss.val, epoch_d_loss.val, get_lr(opt_G), get_lr(opt_D)))
 
-            epoch_psnr = self.on_epoch_end(model_G=model_G, model_D=model_D, device=device, val_dataloader=val_loader, epoch=epoch)
+            epoch_psnr = self.infer(model_G=model_G, model_D=model_D, device=device, infer_dataset=val_dataset, 
+                                    patch_size=args['datasets']['val']['patch_size'], stride=args['datasets']['val']['stride'], 
+                                    infer_batchsize=args['datasets']['val']['batch_size'], epoch=epoch)
 
         if args['vis_type'] == 'tensorboard':
             self.writer.add_scalar('train/epoch_g_loss', epoch_g_loss.avg, epoch)
@@ -146,33 +150,42 @@ class Trainer(object):
             lg.info('Epoch: {} | G_avg_Loss: {:.4f} | D_avg_Loss: {:.4f} | epoch_PSNR: {:.2f} | Best_PSNR: {:.2f} in Epoch [{}]'.format(
                             epoch, epoch_g_loss.avg, epoch_d_loss.avg, epoch_psnr.avg, self.best_psnr, self.best_epoch))
     
-    def on_epoch_end(self, model_G, model_D, device, val_dataloader, epoch):
+    def infer(self, model_G, model_D, device, infer_dataset, patch_size, stride, infer_batchsize, epoch):
         epoch_psnr = AverageMeter()
+        pbar_infer = ProgressBar(len(infer_dataset)//args['datasets']['val']['logging_duration'])
         model_G.eval()
         model_D.eval()
 
         # Generate fake image
         with torch.no_grad():
-            for a, b in val_dataloader:
-                real_input = a
-                real_label = b
-                fake_imgs = model_G(a.to(device)).detach().cpu()
+            for idx, (input, label) in enumerate(infer_dataset):
+                a_fp32 = (1 / 255.0 * input).astype(np.float32)
+                a_fp32_width, a_fp32_height, a_fp32_channel = a_fp32.shape 
+                pred = np.zeros([a_fp32_width, a_fp32_height, 3], np.float32)
+                total = count_sliding_window(a_fp32, step=stride, window_size=(patch_size, patch_size)) // infer_batchsize
+                
+                for i, coords in enumerate(grouper(infer_batchsize, sliding_window(a_fp32, step=stride, window_size=(patch_size, patch_size)))):
+                    image_patches = [np.copy(a_fp32[x:x+w, y:y+h]).transpose((2,0,1)) for x,y,w,h in coords]
+                    image_patches = np.asarray(image_patches)
+                    image_patches = Variable(torch.from_numpy(image_patches).to(device), volatile=True)
+                    
+                    # Do the inference
+                    outs = model_G(image_patches)
+                    outs = outs.data.cpu().numpy()
 
-                if len(real_label) != len(fake_imgs):
-                    print('I/O image length are not same!')
-                    raise NotImplementedError
-                break
-            
-            # Calculate batch PSNR score
-            for idx in range(0, len(fake_imgs), 2):
-                real_input_int8 = np.array(to_pil_image(0.5*real_input[idx]+0.5))
-                real_label_int8 = np.array(to_pil_image(0.5*real_label[idx]+0.5))
-                fake_generated_int8 = np.array(to_pil_image(0.5*fake_imgs[idx]+0.5))
-                epoch_psnr.update(peak_signal_noise_ratio(real_label_int8[idx], fake_generated_int8[idx]))
+                    for out, (x, y, w, h) in zip(outs, coords):
+                        out = out.transpose((1,2,0))
+                        pred[x:x+w, y:y+h] += out
+                    del(outs)
 
-                if idx % args['datasets']['val']['save_duration'] == 0:
-                    if args['datasets']['val']['save_img'] == True:
-                        result_img = np.hstack((real_input_int8, real_label_int8, fake_generated_int8))
+                # Calculate PSNR score
+                pred = (pred * 255).astype(np.int8)
+                epoch_psnr.update(peak_signal_noise_ratio(label, pred))
+
+                if args['mode'] == 'train':
+                    if idx % args['datasets']['val']['logging_duration'] == 0:
+                        pbar_infer.update('Validating... | Epoch: {} | image no.: {} | PSNR: {:.3f}dB (avg. {:.3f}dB)'.format(epoch, idx, epoch_psnr.val, epoch_psnr.avg))
+                        result_img = np.hstack((input, label, pred))
 
                         if args['vis_type'] == 'tensorboard':
                             self.writer.add_image('GT/Generated_image_comparison', cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB), epoch)
@@ -180,6 +193,14 @@ class Trainer(object):
                             wandb.log({"GT/Generated": [wandb.Image(result_img, caption="Epoch{}_{}".format(epoch, idx))]})
                         else:
                             cv2.imwrite(os.path.join(args['paths']['result_path'], '{}_epoch{}_{}_val.png'.format(args['modelname'], epoch, idx)), result_img)
+                elif args['mode'] == 'test':
+                    print('need to be implemented')
+                    raise NotImplementedError
+                else:
+                    print('Invalid mode input.')
+                    raise NotImplementedError
+            
+                
 
         # save best status
         if epoch_psnr.val >= self.best_psnr:
@@ -190,6 +211,8 @@ class Trainer(object):
             torch.save(model_D.state_dict(), model_save_base+'_modelD.pt')
         
         return epoch_psnr
+    
+
 
 def main(args, lg, writer=None):
     Trainer(args, writer, lg)
