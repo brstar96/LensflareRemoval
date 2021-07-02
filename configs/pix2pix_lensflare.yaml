@@ -2,7 +2,7 @@
 modelname: pix2pix_v1
 mode: train # train, test
 vis_type: wandb # tensorboard, wandb, None
-log_interval_step: 100
+log_interval_step: 10
 
 # datasets
 datasets:
@@ -50,8 +50,8 @@ trainer:
   lr: !!float 2e-4
   beta1: 0.5
   beta2: 0.999
-  epochs: 100
+  epochs: 300
   workers: 0
-  val_step: 5
+  val_step: 10
   resume: False
   resume_path: ~

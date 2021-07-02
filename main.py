@@ -189,8 +189,10 @@ class Trainer(object):
 
                         if args['vis_type'] == 'tensorboard':
                             self.writer.add_image('GT/Generated_image_comparison', cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB), epoch)
+                            cv2.imwrite(os.path.join(args['paths']['result_path'], '{}_epoch{}_{}_val.png'.format(args['modelname'], epoch, idx)), result_img)
                         elif args['vis_type'] == 'wandb':
                             wandb.log({"GT/Generated": [wandb.Image(result_img, caption="Epoch{}_{}".format(epoch, idx))]})
+                            cv2.imwrite(os.path.join(args['paths']['result_path'], '{}_epoch{}_{}_val.png'.format(args['modelname'], epoch, idx)), result_img)
                         else:
                             cv2.imwrite(os.path.join(args['paths']['result_path'], '{}_epoch{}_{}_val.png'.format(args['modelname'], epoch, idx)), result_img)
                 elif args['mode'] == 'test':
