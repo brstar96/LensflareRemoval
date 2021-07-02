@@ -2,15 +2,15 @@
 modelname: pix2pix_v1
 mode: train # train, test
 vis_type: wandb # tensorboard, wandb, None
-log_interval_step: 1
+log_interval_step: 10
 
 # datasets
 datasets:
   train:
-    train_input_img: /home/datasets/LensflareRemovalDataset/train_input_img_debug/
-    train_label_img: /home/datasets/LensflareRemovalDataset/train_label_img_debug/
+    train_input_img: /home/datasets/LensflareRemovalDataset/train_input_img/
+    train_label_img: /home/datasets/LensflareRemovalDataset/train_label_img/
     train_csv: /home/datasets/LensflareRemovalDataset/train_splited.csv
-    batch_size: 128
+    batch_size: 340
     patch_size: 256
     stride: 128
     mean: [0.206, 0.218, 0.196]
@@ -25,6 +25,7 @@ datasets:
     std: [0.232, 0.239, 0.231]
     batch_size: 64
     save_img: True
+    save_duration: 10
   test:
     test_path: /home/datasets/LensflareRemovalDataset/test_input_img
     test_csv: /home/datasets/LensflareRemovalDataset/test.csv

@@ -86,8 +86,8 @@ class Trainer(object):
                 ba_si = input.size(0)
 
                 # real image
-                real_input = input.to(device)
-                real_label = label.to(device)
+                real_a = input.to(device) # lensflare image
+                real_b = label.to(device) # GT image
 
                 # patch label
                 real_label = torch.ones(ba_si, *patch, requires_grad=False).to(device)
@@ -96,11 +96,11 @@ class Trainer(object):
                 # generator
                 model_G.zero_grad()
 
-                fake_generated = model_G(real_input) # generate lensflare removal image
-                out_dis = model_D(fake_generated, real_label) # compare lensflare removal image VS. GT image
+                fake_generated = model_G(real_a) # generate lensflare removal image
+                out_dis = model_D(fake_generated, real_b) # compare lensflare removal image VS. GT image
 
                 gen_loss = adv_loss(out_dis, real_label)
-                pixel_loss = l1_loss(fake_generated, real_label)
+                pixel_loss = l1_loss(fake_generated, real_b)
 
                 g_loss = gen_loss + lambda_pixel * pixel_loss
                 g_loss.backward()
@@ -109,10 +109,10 @@ class Trainer(object):
                 # discriminator
                 model_D.zero_grad()
 
-                out_dis = model_D(real_label, real_input) # 진짜 이미지 식별
+                out_dis = model_D(real_b, real_a) # 진짜 이미지 식별
                 real_loss = adv_loss(out_dis, real_label)
                 
-                out_dis = model_D(fake_generated.detach(), real_input) # 가짜 이미지 식별
+                out_dis = model_D(fake_generated.detach(), real_a) # 가짜 이미지 식별
                 fake_loss = adv_loss(out_dis,fake_label)
 
                 d_loss = (real_loss + fake_loss) / 2.
@@ -173,7 +173,13 @@ class Trainer(object):
                 if idx % args['datasets']['val']['save_duration'] == 0:
                     if args['datasets']['val']['save_img'] == True:
                         result_img = np.hstack((real_input_int8, real_label_int8, fake_generated_int8))
-                        cv2.imwrite(os.path.join(args['paths']['result_path'], '{}_epoch{}_{}_val.png'.format(args['modelname'], epoch, idx)), result_img)
+
+                        if args['vis_type'] == 'tensorboard':
+                            self.writer.add_image('GT/Generated_image_comparison', cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB), epoch)
+                        elif args['vis_type'] == 'wandb':
+                            wandb.log({"GT/Generated": [wandb.Image(result_img, caption="Epoch{}_{}".format(epoch, idx))]})
+                        else:
+                            cv2.imwrite(os.path.join(args['paths']['result_path'], '{}_epoch{}_{}_val.png'.format(args['modelname'], epoch, idx)), result_img)
 
         # save best status
         if epoch_psnr.val >= self.best_psnr:
