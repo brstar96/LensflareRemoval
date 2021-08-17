@@ -1,4 +1,4 @@
-import yaml, os, logging, sys, shutil
+import yaml, os, sys, shutil, torch
 import os.path as osp
 sys.path.append('../')
 from utils import logger
@@ -24,18 +24,21 @@ def parse(opt):
     args['paths']['visualizations'] = osp.join(root, 'visualization')
 
     if osp.exists(root) and resume==False:
-        lg.info('Remove dir: [{}]'.format(root))
+        lg.info('Remove existing dir: [{}]'.format(root))
         shutil.rmtree(root, True)
     for name, path in args['paths'].items(): 
         if name == 'state':
             continue
         if not osp.exists(path):
             os.mkdir(path)
-            lg.info('Create directory: {}'.format(path)) 
+            lg.info('Create directory: {}'.format(path))
 
-    # GPU environment
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args['gpu_ids'])
-    lg.info('Available gpu: {}'.format(args['gpu_ids']))
+    lg.info('Batch size: {}, Patch size:{}, flip/rot: {}/{}, lr: {}'.format(
+                                                    args['datasets']['train']['batch_size'], 
+                                                    args['datasets']['train']['patch_size'], 
+                                                    args['datasets']['train']['flip'], 
+                                                    args['datasets']['train']['rot'], 
+                                                    args['trainer']['lr']))
     
     return dict_to_nonedict(args), lg
 

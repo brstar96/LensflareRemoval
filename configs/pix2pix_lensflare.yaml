@@ -1,6 +1,8 @@
 # general settings
 modelname: pix2pix_v1
-gpu_ids: 0
+mode: train # train, test
+vis_type: wandb # tensorboard, wandb, None
+log_interval_step: 10
 
 # datasets
 datasets:
@@ -8,29 +10,35 @@ datasets:
     train_input_img: /home/datasets/LensflareRemovalDataset/train_input_img/
     train_label_img: /home/datasets/LensflareRemovalDataset/train_label_img/
     train_csv: /home/datasets/LensflareRemovalDataset/train_splited.csv
-    batch_size: 64
-    patch_size: 128
-    direction: b2a
+    batch_size: 340 #340
+    patch_size: 256
+    stride: 128
     mean: [0.206, 0.218, 0.196]
     std: [0.232, 0.239, 0.231]
+    flip: True
+    rot: False
     split: train
   val:
-    val_path: /home/datasets/LensflareRemovalDataset/
-    val_csv: /home/datasets/LensflareRemovalDataset/val_splited.csv
+    val_input_img: /home/datasets/LensflareRemovalDataset/val_input_img/
+    val_label_img: /home/datasets/LensflareRemovalDataset/val_label_img/
     mean: [0.206, 0.218, 0.196]
     std: [0.232, 0.239, 0.231]
-    batch_size: 64
+    batch_size: 64 #64
+    patch_size: 256
+    stride: 128
+    logging_duration: 10 #10
   test:
-    test_path: /home/datasets/LensflareRemovalDataset/test_input_img
-    test_csv: /home/datasets/LensflareRemovalDataset/test.csv
+    test_input_img: /home/datasets/LensflareRemovalDataset/test_input_img/
     mean: [0.214, 0.225, 0.204]
     std: [0.208, 0.216, 0.210]
     batch_size: 64
+    patch_size: 256
+    stride: 128    
 
 # network settings
 networks:
   which_model: pix2pix_v1
-  patch_size: 64
+  gpu_ids: 6
 
 # path to save trained model
 paths:
@@ -39,10 +47,11 @@ paths:
 
 # optimizer
 trainer:
-  lr: !!float 1e-2
-  loss: mae
+  lr: !!float 2e-4
+  beta1: 0.5
+  beta2: 0.999
   epochs: 300
   workers: 0
-  val_step: 1
+  val_step: 10
   resume: False
   resume_path: ~
